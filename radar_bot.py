@@ -185,13 +185,18 @@ def main():
     outages = fetch_outages()
     
     if not outages:
-        print("[INFO] ✅ No outages found in the last 6 hours.")
+        print("[INFO] ✅ No outages found in the last 7 days.")
         return
     
     print(f"[INFO] 🔍 Found {len(outages)} total outages")
     new_posts = 0
+    max_posts_per_run = 3  # Limit posts per run to avoid rate limits
     
     for outage in outages:
+        if new_posts >= max_posts_per_run:
+            print(f"[INFO] 🛑 Reached maximum posts per run ({max_posts_per_run}). Remaining outages will be posted in next runs.")
+            break
+            
         outage_id = create_outage_id(outage)
         
         if outage_id not in posted_outages:
@@ -209,6 +214,12 @@ def main():
                 # Add to posted outages
                 posted_outages.add(outage_id)
                 new_posts += 1
+                
+                # Add delay between posts to respect rate limits
+                if new_posts < max_posts_per_run:  # Don't delay after last post
+                    import time
+                    print("[INFO] ⏳ Waiting 30 seconds before next post...")
+                    time.sleep(30)
                 
             except Exception as e:
                 print(f"[ERROR] ❌ Failed to post tweet for outage {outage_id}: {e}")
