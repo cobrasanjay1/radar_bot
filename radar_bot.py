@@ -140,16 +140,24 @@ def fetch_outages():
     """Fetch outages from Cloudflare Radar API"""
     url = "https://api.cloudflare.com/client/v4/radar/annotations/outages"
     params = {
-        "limit": 20,  # Check more outages
+        "limit": 10,
         "offset": 0,
-        "dateRange": "6h",  # Check last 6 hours (more frequent than the 15min cron)
+        "dateRange": "7d",  # Use 7d instead of 6h - more reliable
         "format": "json"
     }
     headers = {"Authorization": f"Bearer {RADAR_TOKEN}"}
     
+    print(f"[DEBUG] API URL: {url}")
+    print(f"[DEBUG] API Params: {params}")
+    
     try:
         response = requests.get(url, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
+        print(f"[DEBUG] Response status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"[ERROR] API Error {response.status_code}: {response.text}")
+            return []
+            
     except requests.exceptions.RequestException as e:
         print(f"[ERROR] API request failed: {e}")
         return []
@@ -157,9 +165,12 @@ def fetch_outages():
     try:
         data = response.json()
         result = data.get("result", {})
-        return result.get("annotations", [])
+        annotations = result.get("annotations", [])
+        print(f"[DEBUG] API returned {len(annotations)} annotations")
+        return annotations
     except json.JSONDecodeError as e:
         print(f"[ERROR] Failed to parse API response: {e}")
+        print(f"[DEBUG] Raw response: {response.text[:500]}")
         return []
 
 def main():
