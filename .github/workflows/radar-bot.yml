@@ -2,9 +2,15 @@ name: Cloudflare Radar Twitter Bot
 
 on:
   schedule:
-    # Run every 15 minutes
-    - cron: '*/15 * * * *'
+    # Run every 30 minutes to respect rate limits better
+    - cron: '0,30 * * * *'
   workflow_dispatch: # Allows manual trigger
+    inputs:
+      debug:
+        description: 'Enable debug logging'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   check-outages:
@@ -31,6 +37,13 @@ jobs:
         path: .
       continue-on-error: true
       
+    - name: Download rate limit tracker
+      uses: actions/download-artifact@v4
+      with:
+        name: rate-limit-tracker
+        path: .
+      continue-on-error: true
+      
     - name: Run radar bot
       env:
         API_KEY: ${{ secrets.API_KEY }}
@@ -39,7 +52,14 @@ jobs:
         ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
         BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
         RADAR_TOKEN: ${{ secrets.RADAR_TOKEN }}
-      run: python radar_bot.py
+        DEBUG_MODE: ${{ github.event.inputs.debug || 'false' }}
+      run: |
+        if [ "$DEBUG_MODE" = "true" ]; then
+          export PYTHONPATH=$PYTHONPATH:.
+          python -u radar_bot.py
+        else
+          python radar_bot.py
+        fi
       
     - name: Upload posted outages history
       uses: actions/upload-artifact@v4
@@ -47,3 +67,27 @@ jobs:
         name: posted-outages
         path: posted_outages.json
         retention-days: 90
+      if: always()
+      
+    - name: Upload rate limit tracker
+      uses: actions/upload-artifact@v4
+      with:
+        name: rate-limit-tracker
+        path: rate_limit_tracker.json
+        retention-days: 30
+      if: always()
+      
+    - name: Log workflow summary
+      if: always()
+      run: |
+        echo "## Workflow Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Timestamp**: $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        if [ -f posted_outages.json ]; then
+          OUTAGE_COUNT=$(cat posted_outages.json | jq '. | length' 2>/dev/null || echo "0")
+          echo "- **Total Tracked Outages**: $OUTAGE_COUNT" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -f rate_limit_tracker.json ]; then
+          POST_COUNT=$(cat rate_limit_tracker.json | jq '.posts | length' 2>/dev/null || echo "0")
+          echo "- **Posts in Last 24h**: $POST_COUNT" >> $GITHUB_STEP_SUMMARY
+        fi
